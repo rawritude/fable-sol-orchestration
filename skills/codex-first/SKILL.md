@@ -55,6 +55,8 @@ codex exec -C <repo> \
 SID="$(jq -r 'select(.type=="thread.started")|.thread_id' "$RUN/events.jsonl" | head -1)"  # robust session id
 ```
 
+**Prefer the installed wrapper** — `bin/sol-run` (→ `~/.local/bin/sol-run`) encodes this exact invocation: `sol-run [-C repo] [-s workspace-write|read-only] [-n] [-m model] [-e effort] < prompt`; resume with `sol-run -r <sid> -C repo < prompt`; old run dirs purge with `sol-run gc`. It prints `RUN= RESULT= EVENTS= ERR= SID= EXIT= AVAIL=` lines (`AVAIL=hard_unavailable` → take the fallback ladder below), keeps run dirs so results outlive backgrounded calls, and hard-rejects `danger-full-access`, dash-leading resume ids, and any repo that would contain the run-dir base. One command means one harness allowlist rule (`Bash(sol-run:*)`) instead of a human approval per compound block. The block above stays as the reference contract and the fallback where the wrapper isn't installed.
+
 - `--ignore-user-config` skips `$CODEX_HOME/config.toml`, so config-defined MCP servers, extra writable roots, and network defaults don't leak in. It does NOT cover a standalone `~/.codex/hooks.json` — that still loads, so keep no untrusted hooks there (none by default). Pin sandbox/model/effort explicitly on top.
 - Sandbox tiers: `workspace-write` for implementation (writes confined to repo + tmp, reads unrestricted), `read-only` for reviews/exploration. Enable network only per-task with `-c sandbox_workspace_write.network_access=true` (dep installs, or proofs that bind a port — next sentence); it grants direct unproxied egress, so keep it off by default and off for anything touching untrusted code. Network off blocks `socket()` wholesale (seccomp EPERM, verified 2026-07-14), not just egress — even loopback binds fail. Decide at dispatch: if the proof command spins up a local server (vitest/playwright server suites, BFF tests), the lot needs network on, else the proof hard-fails in-sandbox.
 - Implementation-heavy lots: `gpt-5.6-luna` is the common flat-rate implementer pick in the wild (Sol reviews it); untested here — benchmark before making it the default.
@@ -149,7 +151,7 @@ Mechanics, verified 2026-07-14 with two parallel live runs: correct edits per wo
 FLEET="$(mktemp -d "$HOME/.cache/fleet.XXXXXX")"   # NOT $XDG_RUNTIME_DIR: tmpfs — a reboot eats un-merged lot diffs, and it's too small for dep-heavy repos
 git -C <repo> worktree add "$FLEET/lot1" -b fleet/lot1
 git -C <repo> worktree add "$FLEET/lot2" -b fleet/lot2
-# one standard headless invocation per lot (own $RUN dir), backgrounded, -C "$FLEET/lotN"
+# one lot = one backgrounded `sol-run -C "$FLEET/lotN" < lotN.prompt` (or the standard inline invocation)
 ```
 
 - `git status` / `git diff` work inside a sandboxed worktree even though the shared `.git` lives outside the workspace root: the sandbox confines writes, not reads, and Sol never commits (standing guardrail), so no `.git` writes are needed. Verified 2026-07-14.

@@ -34,6 +34,7 @@ No framework, no daemon, no MCP bridge: skills + `codex exec` + files.
 |---|---|---|
 | `skills/codex-first/SKILL.md` | `~/.claude/skills/codex-first/` | The orchestration skill: routing table, invocation pins, sandbox tiers, review lane, verify loop |
 | `skills/herdr/SKILL.md` | `~/.claude/skills/herdr/` | Visible transport — Sol in a sibling terminal pane (upstream: [ogulcancelik/herdr](https://github.com/ogulcancelik/herdr)) |
+| `bin/sol-run` | `~/.local/bin/sol-run` | Allowlistable wrapper encoding the pinned invocation (0700 run dirs outside writable roots, flag pins, resume, `gc`); KEY=VALUE output contract incl. `AVAIL=hard_unavailable` for the fallback ladder |
 | `codex/AGENTS.md` | `~/.codex/AGENTS.md` | Sol's standing guardrails: no commits/pushes, no secrets, no prod, FILES CHANGED/PROOF/RISKS report format |
 | `claude/CLAUDE.md` | `~/.claude/CLAUDE.md` | Global routing rule making delegation the default |
 | `system/apparmor/bwrap` | `/etc/apparmor.d/bwrap` | AppArmor userns grant for `/usr/bin/bwrap` — makes Codex's sandbox work on Ubuntu 24.04 |

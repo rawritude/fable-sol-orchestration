@@ -58,6 +58,10 @@ install_file() {
 install_file "$REPO/skills/codex-first/SKILL.md" "$HOME/.claude/skills/codex-first/SKILL.md"
 install_file "$REPO/skills/herdr/SKILL.md"       "$HOME/.claude/skills/herdr/SKILL.md"
 
+install_file "$REPO/bin/sol-run" "$HOME/.local/bin/sol-run"
+if [ "$APPLY" = 1 ] && [ -f "$HOME/.local/bin/sol-run" ]; then chmod +x "$HOME/.local/bin/sol-run"; fi
+case ":$PATH:" in *":$HOME/.local/bin:"*) : ;; *) say "WARN: ~/.local/bin not on PATH — sol-run won't resolve" ;; esac
+
 # ---- managed-block merge (instruction files) ------------------------------
 # Replaces content between markers, leaving the rest of the user's file intact.
 merge_block() {

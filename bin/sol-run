@@ -1,0 +1,117 @@
+#!/usr/bin/env bash
+# sol-run — pinned `codex exec` invocation for the Fable <-> Sol orchestration lanes.
+#
+# Encodes the security-critical invocation from skills/codex-first: unique 0700 run
+# dir OUTSIDE any sandbox writable root (the -o file is written by the unsandboxed
+# parent — a predictable path is a verified symlink write-escape), --ignore-user-config,
+# explicit sandbox/model/effort pins. One clean command the harness can allowlist,
+# instead of a compound block to approve every time.
+#
+# Usage:
+#   sol-run [-C repo] [-s workspace-write|read-only] [-n] [-m model] [-e effort] < prompt
+#   sol-run -r <session-id> -C repo < prompt     # resume (inherits original sandbox)
+#   sol-run gc                                   # purge run dirs older than 7 days
+#
+# Prompt on stdin. Prints KEY=VALUE lines on stdout:
+#   RUN= RESULT= EVENTS= ERR= SID= EXIT= AVAIL=
+# and exits with codex's exit code. AVAIL=hard_unavailable flags usage/auth failure
+# (fall back per the skill's ladder). Run dirs are NOT auto-deleted — results must
+# outlive the call for background use; `sol-run gc` cleans old ones.
+
+set -euo pipefail
+umask 077
+
+MODEL="gpt-5.6-sol"
+EFFORT="high"
+SANDBOX="workspace-write"
+NETWORK=0
+REPO="$PWD"
+RESUME=""
+BASE="$HOME/.cache/sol-run"
+
+die() { echo "sol-run: $*" >&2; exit 2; }
+
+if [ "${1:-}" = "gc" ]; then
+  [ $# -eq 1 ] || die "gc takes no arguments"
+  [ -d "$BASE" ] && find "$BASE" -mindepth 1 -maxdepth 1 -type d -name 'run.*' -mtime +7 -exec rm -rf {} +
+  echo "GC=done"; exit 0
+fi
+
+while getopts ":C:s:m:e:r:n" opt; do
+  case "$opt" in
+    C) REPO="$OPTARG" ;;
+    s) SANDBOX="$OPTARG" ;;
+    m) MODEL="$OPTARG" ;;
+    e) EFFORT="$OPTARG" ;;
+    r) RESUME="$OPTARG" ;;
+    n) NETWORK=1 ;;
+    *) die "bad/incomplete flag -$OPTARG (usage in file header)" ;;
+  esac
+done
+shift $((OPTIND-1))
+[ $# -eq 0 ] || die "unexpected positional args: $* (prompt goes on stdin)"
+
+case "$SANDBOX" in
+  workspace-write|read-only) ;;
+  *) die "sandbox '$SANDBOX' not allowed here (workspace-write|read-only; never danger-full-access)" ;;
+esac
+[ "$NETWORK" -eq 1 ] && [ "$SANDBOX" != "workspace-write" ] && die "-n only applies to workspace-write"
+if [ -n "$RESUME" ]; then
+  # exact session uuids only — a leading dash would be parsed by codex as a flag (e.g. --last)
+  case "$RESUME" in
+    -*|*[!0-9a-fA-F-]*) die "resume id must be a session uuid (got: $RESUME)" ;;
+  esac
+fi
+[ -d "$REPO" ] || die "repo dir not found: $REPO"
+command -v codex >/dev/null || die "codex not on PATH"
+command -v jq    >/dev/null || die "jq not on PATH"
+
+# The run dir must never sit inside the delegate's writable workspace.
+# Compare canonical paths (symlinked BASE or repo would otherwise slip through),
+# and ${REPO_REAL%/} keeps the guard correct for REPO=/ .
+mkdir -p "$BASE"
+BASE_REAL="$(realpath "$BASE")"
+REPO_REAL="$(realpath "$REPO")"
+case "$BASE_REAL/" in
+  "${REPO_REAL%/}/"*) die "repo would contain the run-dir base ($BASE_REAL) — pick another repo path" ;;
+esac
+
+RUN="$(mktemp -d "$BASE/run.XXXXXXXX")"
+
+cat > "$RUN/prompt"
+[ -s "$RUN/prompt" ] || { rm -rf "$RUN"; die "empty prompt on stdin"; }
+
+set +e
+if [ -n "$RESUME" ]; then
+  # resume has no -C and inherits the original run's sandbox/model/effort — pin only the surface flags
+  ARGS=(--ignore-user-config --json -o "$RUN/result.md")
+  git -C "$REPO" rev-parse --is-inside-work-tree >/dev/null 2>&1 || ARGS+=(--skip-git-repo-check)
+  (cd "$REPO" && codex exec resume "$RESUME" "${ARGS[@]}" - < "$RUN/prompt" > "$RUN/events.jsonl" 2> "$RUN/err")
+  CODE=$?
+else
+  ARGS=(--ignore-user-config --sandbox "$SANDBOX" -m "$MODEL" -c "model_reasoning_effort=\"$EFFORT\"" --enable fast_mode --json -o "$RUN/result.md")
+  if [ "$SANDBOX" = "workspace-write" ]; then
+    if [ "$NETWORK" -eq 1 ]; then NET=true; else NET=false; fi
+    ARGS+=(-c "sandbox_workspace_write.network_access=$NET")
+  fi
+  git -C "$REPO" rev-parse --is-inside-work-tree >/dev/null 2>&1 || ARGS+=(--skip-git-repo-check)
+  codex exec -C "$REPO" "${ARGS[@]}" - < "$RUN/prompt" > "$RUN/events.jsonl" 2> "$RUN/err"
+  CODE=$?
+fi
+set -e
+
+SID="$(jq -r 'select(.type=="thread.started")|.thread_id' "$RUN/events.jsonl" 2>/dev/null | head -1 || true)"
+[ -n "$SID" ] || SID="${RESUME:-unknown}"
+
+AVAIL=ok
+if [ "$CODE" -ne 0 ]; then
+  if grep -qiE 'usage limit|rate limit|429|quota|insufficient_quota|not logged in|401' "$RUN/err" "$RUN/result.md" 2>/dev/null; then
+    AVAIL=hard_unavailable
+  else
+    AVAIL=error
+  fi
+fi
+
+printf 'RUN=%s\nRESULT=%s\nEVENTS=%s\nERR=%s\nSID=%s\nEXIT=%s\nAVAIL=%s\n' \
+  "$RUN" "$RUN/result.md" "$RUN/events.jsonl" "$RUN/err" "$SID" "$CODE" "$AVAIL"
+exit "$CODE"
