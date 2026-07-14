@@ -91,6 +91,8 @@ Optional complement — official plugin for ad-hoc reviews and background jobs:
 
 Leave its stop-time review gate off (it reviews every turn, 900s timeout).
 
+Optional, for prompt-free delegation from Claude Code: add `"Bash(sol-run:*)"` to `permissions.allow` in `~/.claude/settings.json`. Note the permission classifier rightly refuses to let the agent widen its own allowlist — add it yourself, or grant it explicitly in-session.
+
 ## Persistence & portability
 
 **Same machine, switching Claude accounts:** nothing to do. Everything lives in machine-scoped paths (`~/.claude/skills`, `~/.claude/CLAUDE.md`, `~/.claude/plugins`, `~/.codex/`, `/etc/apparmor.d/bwrap`) — none keyed to the Claude account. Account switching only swaps `~/.claude/.credentials.json`. Codex auth is a separate ChatGPT login, untouched by Claude account changes.
