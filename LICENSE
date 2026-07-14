@@ -1,0 +1,8 @@
+Copyright (c) 2026 rawritude
+
+Source-available for reference and adaptation. No redistribution or warranty
+granted by default — open an issue if you want a specific open-source license.
+
+Adapts ideas from steipete/agent-scripts, PiLastDigit/TRIP-workflow,
+ogulcancelik/herdr, and openai/codex-plugin-cc (all MIT); see README for lineage.
+skills/herdr/SKILL.md is vendored from ogulcancelik/herdr under its own license.
