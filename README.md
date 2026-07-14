@@ -49,6 +49,7 @@ No framework, no daemon, no MCP bridge: skills + `codex exec` + files.
 - **Interactive/visible runs (herdr):** pin `-a never` — approvals and sandbox are independent knobs; approvals-off keeps the sandbox intact, while the default `on-request` policy stalls an unattended pane on escalation prompts.
 - **Never `--yolo`** — it drops approvals *and* the sandbox together.
 - Network off blocks `socket()` entirely (seccomp EPERM), not just egress — port-binding test suites (vitest/playwright servers) need per-lot network opt-in at dispatch.
+- Sol can sub-delegate: codex's `multi_agent` feature (stable, default-on) gives it `spawn_agent`/`wait_agent`/etc., and children verifiably inherit the session sandbox. Used for read-heavy fan-out only; parallel write lots use separate exec runs in separate git worktrees (see the skill's "Sol-side fan-out" section).
 - Requires the bwrap AppArmor profile on Ubuntu ≥23.10 (`apparmor_restrict_unprivileged_userns=1` otherwise kills every sandboxed spawn with `RTM_NEWADDR: Operation not permitted`).
 
 ## Install

@@ -37,6 +37,9 @@ Distinct from D9 (a *quality* failure). If codex is usage-exhausted, logged out,
 ## D10 — Guardrails live on both sides
 Fable-side: routing rule + skill keep secrets/MCP/prod/git actions out of delegation entirely. Sol-side: `~/.codex/AGENTS.md` standing rules (no commits, no secrets, no prod, structured report). Neither replaces a scoped prompt; both catch prompt-writing mistakes.
 
+## D11 — Sol-side fan-out for reads, orchestrator-side worktrees for writes (2026-07-14)
+codex 0.144.4's `multi_agent` feature is stable and default-on: Sol can spawn/await/message sub-agents recursively (`agents.max_depth`/`agents.max_threads` caps), and children verifiably inherit the session sandbox (probe: inside-write ok, outside-write `Read-only file system`, host-confirmed both ways). Adopted split: Sol self-fans-out only for read-heavy intra-lot work (exploration, multi-lens review) where write collisions can't happen; parallel implementation stays orchestrator-side across separate exec runs in separate git worktrees, because codex sub-agents share one working tree with only prompt-level ("don't revert others' edits") coordination. D6 unchanged — Sol's internal agent count doesn't change the review unit: one session, one diff. `spawn_agents_on_csv` (16-way CSV batch harness with per-worker output schemas) is present in the binary but gated behind `enable_fanout` (under development, off); re-evaluate on upgrades.
+
 ## Non-goals
 - Model-vs-model tournaments, scorekeeping files, agent-to-agent chat channels (fun on Reddit, unmaintained state in practice).
 - TRIP's phase state machine, per-project init rituals, ARCHI.md convention — over-engineered for this shop (owner ruling).

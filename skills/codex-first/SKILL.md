@@ -113,6 +113,16 @@ For greenfield/self-contained specs, or as a fallback if the sandbox regresses:
 
 When running inside Herdr (`test "${HERDR_ENV:-}" = 1`) and the user wants to watch: use `$herdr` skill mechanics instead of headless exec — split a sibling pane (`--no-focus`), rename it `sol`, `pane run <id> "codex --sandbox workspace-write -a never"` (swap to `--sandbox read-only` for review lots), wait for `idle`, then `pane run` the same frozen spec text, `herdr wait agent-status <id> --status done` (or `idle` if the user is watching the tab), and `pane read --source recent-unwrapped` for the result. Same prompt contract, same review gate — only the transport differs. Pin `-a never` explicitly: bare interactive codex defaults to `-a on-request`, and a mid-run escalation prompt stalls the pane indefinitely once nobody's watching (observed 2026-07-14: a sandbox-blocked vitest port bind produced exactly that stall). `-a never` keeps the sandbox on with approvals off — failures return to the model, same semantics as the exec lane. Since the model can't escalate mid-run, decide network access at dispatch (see sandbox tiers). Approvals and sandbox are independent knobs — never buy prompt-freedom with `--yolo`, which drops both.
 
+## Sol-side fan-out (multi-agent — verified 2026-07-14)
+
+codex-cli 0.144.4 ships a stable, default-on `multi_agent` feature: Sol has `spawn_agent`, `wait_agent`, `send_message`, `followup_task`, `interrupt_agent`, `list_agents`; sub-agents can spawn their own (capped by `agents.max_depth` / `agents.max_threads`). Live under the pinned exec invocation — `--ignore-user-config` does not disable it. Children INHERIT the session sandbox (verified: a child of a workspace-write parent wrote inside the workspace and got `Read-only file system` outside it; host-checked both ways).
+
+- **Use for read-heavy intra-lot parallelism**: bulk exploration, per-module surveys, multi-lens review inside ONE delegation. When a lot is embarrassingly parallel, say so in the prompt ("fan out sub-agents over the per-module survey; merge their findings") — flat-rate, self-coordinating, one result to read.
+- **Not for parallel implementation**: sub-agents share one working tree with zero isolation — codex's own worker prompt just tells them not to revert each other's edits. Parallel write lots stay orchestrator-side: separate `codex exec` runs in separate `git worktree`s, merged after review.
+- Review math unchanged: however many agents Sol spawns internally, it is one session and one diff — the full review gate applies to the whole output.
+- `spawn_agents_on_csv` (CSV batch harness: one worker per row, `{column}` templates, per-worker output schema, 16-way concurrency) exists in the binary but is gated behind `enable_fanout` (under development, off) — re-check on codex upgrades.
+- Fan-out burns the flat-rate usage window faster; keep it purposeful, not decorative.
+
 ## Follow-ups (resume — cheaper than fresh runs, keeps Sol's context)
 
 Use the `$SID` captured from the first run's `thread.started` event (above); with parallel runs never trust `--last`. Resume writes into a fresh `$RUN` dir too:
