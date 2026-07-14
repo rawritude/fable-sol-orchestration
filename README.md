@@ -46,7 +46,9 @@ No framework, no daemon, no MCP bridge: skills + `codex exec` + files.
 
 - **Implementation:** `--sandbox workspace-write` (writes confined to repo + tmp; network off, opt-in via `-c sandbox_workspace_write.network_access=true`).
 - **Review/exploration:** `--sandbox read-only`.
-- **Never `--yolo`.**
+- **Interactive/visible runs (herdr):** pin `-a never` — approvals and sandbox are independent knobs; approvals-off keeps the sandbox intact, while the default `on-request` policy stalls an unattended pane on escalation prompts.
+- **Never `--yolo`** — it drops approvals *and* the sandbox together.
+- Network off blocks `socket()` entirely (seccomp EPERM), not just egress — port-binding test suites (vitest/playwright servers) need per-lot network opt-in at dispatch.
 - Requires the bwrap AppArmor profile on Ubuntu ≥23.10 (`apparmor_restrict_unprivileged_userns=1` otherwise kills every sandboxed spawn with `RTM_NEWADDR: Operation not permitted`).
 
 ## Install
