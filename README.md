@@ -15,6 +15,8 @@ No framework, no daemon, no MCP bridge: skills + `codex exec` + files.
 │    ├── implement lane:  codex exec --sandbox workspace-write
 │    ├── review lane:     codex exec --sandbox read-only    │
 │    │     (plan/code review, APPROVED/… tag contract)      │
+│    ├── fleet lane:      N x codex exec in git worktrees   │
+│    ├── verify panel:    3 x read-only reviewers           │
 │    ├── follow-ups:      codex exec resume <session-id>    │
 │    └── visible mode:    herdr pane (HERDR_ENV=1)          │
 │                                                           │
@@ -50,6 +52,8 @@ No framework, no daemon, no MCP bridge: skills + `codex exec` + files.
 - **Never `--yolo`** — it drops approvals *and* the sandbox together.
 - Network off blocks `socket()` entirely (seccomp EPERM), not just egress — port-binding test suites (vitest/playwright servers) need per-lot network opt-in at dispatch.
 - Sol can sub-delegate: codex's `multi_agent` feature (stable, default-on) gives it `spawn_agent`/`wait_agent`/etc., and children verifiably inherit the session sandbox. Used for read-heavy fan-out only; parallel write lots use separate exec runs in separate git worktrees (see the skill's "Sol-side fan-out" section).
+- Fleet lane: parallel implementation lots run in separate git worktrees (one `codex exec` per lot, verified no cross-contamination); merges are orchestrator-side and sequential; fleet width is bounded by review bandwidth.
+- Verify panel: ship-gating reviews can fan out to 3 parallel read-only reviewers with distinct lenses (correctness / security / proof audit), 2-of-3 majority with fail-closed handling of confirmed P1/P2 findings.
 - Requires the bwrap AppArmor profile on Ubuntu ≥23.10 (`apparmor_restrict_unprivileged_userns=1` otherwise kills every sandboxed spawn with `RTM_NEWADDR: Operation not permitted`).
 
 ## Install

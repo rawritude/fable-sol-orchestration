@@ -101,6 +101,15 @@ Reviews run `--sandbox read-only` — Sol inspects, never edits. Same `$RUN`-dir
 - Convergence guard: max 3 rounds. After round 3, Fable dispositions *every* remaining finding explicitly; a confirmed P1/P2 correctness or security finding BLOCKS completion — only reviewer-noise or accepted-risk items may be "moved on."
 - (Tag contract, anti-noise list, and notes channel adapted from PiLastDigit/TRIP-workflow — deliberately without its state machine. For ad-hoc reviews with background job management, the official `openai/codex-plugin-cc` plugin's `/codex:review` and `/codex:adversarial-review` cover the same ground.)
 
+### Verify panel (ship-gating)
+
+Use after Fable's own review, before commit, for correctness- or security-critical lots and integrated fleet diffs. Routine lots keep the single-reviewer default.
+
+- Run 3 read-only reviewers in parallel, each backgrounded with its own `$RUN` dir and a distinct lens: (1) correctness, (2) security/trust-boundary, (3) proof audit — does the claimed proof actually demonstrate the spec's success criteria? Proof audit is static; Fable still reruns proofs itself. Diversity over redundancy: three different lens prompts, never three copies of one prompt.
+- Same contracts as single reviews: SHA-pinned diff, anti-noise list, and exactly one fail-closed verdict tag per reviewer. A malformed or missing tag means that reviewer FAILED and counts as not-approved.
+- Gate: 2/3 APPROVED passes the panel, **but any confirmed P1/P2 correctness or security finding from any reviewer must be explicitly dispositioned by Fable regardless of the vote**. Majority gates the verdict; findings stay fail-closed.
+- Findings remain advisory input to Fable; the max-3-rounds convergence guard is unchanged. Flat-rate makes the 3x coverage free; parallel execution keeps elapsed time at ~1 review.
+
 ## Invoke (no-exec generation mode — best-effort, NOT enforced)
 
 For greenfield/self-contained specs, or as a fallback if the sandbox regresses:
@@ -113,6 +122,10 @@ For greenfield/self-contained specs, or as a fallback if the sandbox regresses:
 
 When running inside Herdr (`test "${HERDR_ENV:-}" = 1`) and the user wants to watch: use `$herdr` skill mechanics instead of headless exec — split a sibling pane (`--no-focus`), rename it `sol`, `pane run <id> "codex --sandbox workspace-write -a never"` (swap to `--sandbox read-only` for review lots), wait for `idle`, then `pane run` the same frozen spec text, `herdr wait agent-status <id> --status done` (or `idle` if the user is watching the tab), and `pane read --source recent-unwrapped` for the result. Same prompt contract, same review gate — only the transport differs. Pin `-a never` explicitly: bare interactive codex defaults to `-a on-request`, and a mid-run escalation prompt stalls the pane indefinitely once nobody's watching (observed 2026-07-14: a sandbox-blocked vitest port bind produced exactly that stall). `-a never` keeps the sandbox on with approvals off — failures return to the model, same semantics as the exec lane. Since the model can't escalate mid-run, decide network access at dispatch (see sandbox tiers). Approvals and sandbox are independent knobs — never buy prompt-freedom with `--yolo`, which drops both.
 
+- Immediately after launching codex in the pane, capture the session id from the newest rollout file under `~/.codex/sessions/YYYY/MM/DD/` whose first-line meta matches the repo cwd. Capture it **before launching any other codex** or the "newest" heuristic races.
+- After `herdr wait agent-status <id> --status done` and `pane read --source recent-unwrapped` has captured the result, close the pane with `herdr pane close <id>`. This is lossless: edits are already on disk in the repo, and codex persists the thread incrementally to `~/.codex/sessions` rollout files, so it remains resumable headless with `codex exec resume "$SID"` after the pane is gone.
+- Never close a pane whose agent status is `blocked` or `unknown` — inspect it with `pane get` / `pane read` first. A finished pane left open is stale state on the user's screen; close it once the result is captured.
+
 ## Sol-side fan-out (multi-agent — verified 2026-07-14)
 
 codex-cli 0.144.4 ships a stable, default-on `multi_agent` feature: Sol has `spawn_agent`, `wait_agent`, `send_message`, `followup_task`, `interrupt_agent`, `list_agents`; sub-agents can spawn their own (capped by `agents.max_depth` / `agents.max_threads`). Live under the pinned exec invocation — `--ignore-user-config` does not disable it. Children INHERIT the session sandbox (verified: a child of a workspace-write parent wrote inside the workspace and got `Read-only file system` outside it; host-checked both ways).
@@ -122,6 +135,29 @@ codex-cli 0.144.4 ships a stable, default-on `multi_agent` feature: Sol has `spa
 - Review math unchanged: however many agents Sol spawns internally, it is one session and one diff — the full review gate applies to the whole output.
 - `spawn_agents_on_csv` (CSV batch harness: one worker per row, `{column}` templates, per-worker output schema, 16-way concurrency) exists in the binary but is gated behind `enable_fanout` (under development, off) — re-check on codex upgrades.
 - Fan-out burns the flat-rate usage window faster; keep it purposeful, not decorative.
+
+## Fleet lane (parallel implementation lots — verified 2026-07-14)
+
+Trigger on an implementation task that decomposes into >=2 file-disjoint lots. Decomposition is orchestrator design work: partition by file ownership; if two lots would touch the same file, merge them into one lot or serialize them. Disjointness is what makes merges trivial.
+
+Each lot gets its own frozen spec, `$RUN` dir, and session id. Decide network at dispatch per lot (see sandbox tiers).
+
+Mechanics, verified 2026-07-14 with two parallel live runs: correct edits per worktree, zero cross-contamination.
+
+```bash
+FLEET="$(mktemp -d "$HOME/.cache/fleet.XXXXXX")"   # NOT $XDG_RUNTIME_DIR: tmpfs — a reboot eats un-merged lot diffs, and it's too small for dep-heavy repos
+git -C <repo> worktree add "$FLEET/lot1" -b fleet/lot1
+git -C <repo> worktree add "$FLEET/lot2" -b fleet/lot2
+# one standard headless invocation per lot (own $RUN dir), backgrounded, -C "$FLEET/lotN"
+```
+
+- `git status` / `git diff` work inside a sandboxed worktree even though the shared `.git` lives outside the workspace root: the sandbox confines writes, not reads, and Sol never commits (standing guardrail), so no `.git` writes are needed. Verified 2026-07-14.
+- Concurrency cap: 4–6 lots in flight. Flat-rate still has a finite ChatGPT usage window; queue the rest.
+- Mid-fleet degradation: a hard-unavailability signal on any lot (see "When Sol is unavailable") switches the remaining undispatched lots to Claude subagents (`Agent`, isolation: `"worktree"`, model per the fallback ladder). In-flight lots run to completion.
+- Review + merge are orchestrator-side and sequential: full-diff review + proof run per lot in its worktree; a lot branch has NO commits until review passes (Sol never commits), so the orchestrator commits each reviewed lot on its `fleet/*` branch itself, then merges lot branches one at a time into an integration branch; run the whole-suite integration proof after the last merge. File-disjointness keeps conflicts near zero. For ship-gating, the verify panel runs on the **integrated diff**, not per lot.
+- Fleet width is bounded by the orchestrator's review bandwidth, not Sol's throughput. Every merged diff still gets a full read; keep lots small enough to genuinely review.
+- Cleanup after merge: `git worktree remove "$FLEET/lotN"` (`--force` for an abandoned dirty lot), then delete the `fleet/*` branches. Worktrees live outside the repo, so no `.gitignore` churn.
+- Sol-side fan-out covers read-heavy parallelism **inside one lot**; the fleet lane is its write-side complement **across lots**.
 
 ## Follow-ups (resume — cheaper than fresh runs, keeps Sol's context)
 
