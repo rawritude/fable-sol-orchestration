@@ -170,6 +170,8 @@ git -C <repo> worktree add "$FLEET/lot2" -b fleet/lot2
 - Review + merge are orchestrator-side and sequential: full-diff review + proof run per lot in its worktree; a lot branch has NO commits until review passes (Sol never commits), so the orchestrator commits each reviewed lot on its `fleet/*` branch itself, then merges lot branches one at a time into an integration branch; run the whole-suite integration proof after the last merge. File-disjointness keeps conflicts near zero. For ship-gating, the verify panel runs on the **integrated diff**, not per lot.
 - Fleet width is bounded by the orchestrator's review bandwidth, not Sol's throughput. Every merged diff still gets a full read; keep lots small enough to genuinely review.
 - Cleanup after merge: `git worktree remove "$FLEET/lotN"` (`--force` for an abandoned dirty lot), then delete the `fleet/*` branches. Worktrees live outside the repo, so no `.gitignore` churn.
+- Collision detection is ORCHESTRATOR duty, not the lots': lots run isolated by design and cannot see sibling branches. At triage, check every proposed lot's file set against ALL in-flight lot/PR branches — not just the current batch's picks. Two lots authoring "the same" file, even byte-identical, is a merge conflict in disguise. When a running lot reports it needs a seam that exists only on a sibling branch (pre-done checklist item h), stack it — re-dispatch on the sibling's branch; never let it recreate the file.
+- Merge-time main re-sync is also orchestrator duty: lots run network-off and can only see the `origin/main` frozen at worktree creation (checklist item g makes them declare which subsystems the check must cover); before each merge, fetch live main and re-check composition for exactly those subsystems.
 - Sol-side fan-out covers read-heavy parallelism **inside one lot**; the fleet lane is its write-side complement **across lots**.
 
 ## Follow-ups (resume — cheaper than fresh runs, keeps Sol's context)
@@ -187,9 +189,12 @@ Use the `$SID` captured from the first run's `thread.started` event (above); wit
 
 Sol starts with zero session context. Every prompt: goal, exact repo/paths, constraints, non-goals, proof expected (exact test command), output shape ("report files changed + test output + risks"). Spec quality decides success. `~/.codex/AGENTS.md` carries the standing guardrails (no commits, no secrets, no prod) — don't restate them, but don't rely on them replacing a scoped prompt either.
 
+**Implementation lots additionally get the pre-done checklist**: append the full contents of `PRE-DONE.md` (installed alongside this skill) to the lot prompt, and require the report to end with a "Pre-done checklist" section — one line per item a–h, each `PASS — <how proven>` or `N/A — <why>`. An item that is neither marks the lot incomplete: bounce it before any review. Each item traces to a real defect that shipped green through author self-review and was only caught at ship-gate (8 misses across ~19 PRs); the checklist makes the lot catch its own cheap 75% so the gate spends attention on the cross-system 25%. Review and exploration lots do NOT get it — it's a declare-done contract, not a standing rule.
+
 ## Verify (Fable, always)
 
 - `git status -sb` + read the full diff; judge like a contributor PR
+- Implementation lots: start by spot-checking the Pre-done checklist claims (they're designed to be confirmable). A missing item bounces the lot; a FALSE `PASS` is worse — it burns a strike in the 2-strike budget, because a checklist that gets rote-stamped is the "claims stronger enforcement than the code provides" failure wearing a report format.
 - run focused tests yourself or demand proof output; Sol claims are advisory. Caveat: running Sol-touched tests on the host is an execution trampoline — a delegate can hide a payload in `package.json`/a test runner/a fixture that fires when Fable runs `npm test` outside the sandbox. On untrusted code, diff the test/build entrypoints against base before running, or run verification in the sandbox too.
 - iterate via resume; after 2 failed rounds, take over and do it directly
 - Fable commits; normal closeout (review, verify) still applies

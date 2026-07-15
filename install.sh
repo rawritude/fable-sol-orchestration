@@ -55,8 +55,9 @@ install_file() {
     [ -f "$dst" ] && cp "$dst" "$dst.bak.$(date +%s)"
     cp "$src" "$dst"; say "installed: $dst"
 }
-install_file "$REPO/skills/codex-first/SKILL.md" "$HOME/.claude/skills/codex-first/SKILL.md"
-install_file "$REPO/skills/herdr/SKILL.md"       "$HOME/.claude/skills/herdr/SKILL.md"
+install_file "$REPO/skills/codex-first/SKILL.md"    "$HOME/.claude/skills/codex-first/SKILL.md"
+install_file "$REPO/skills/codex-first/PRE-DONE.md" "$HOME/.claude/skills/codex-first/PRE-DONE.md"
+install_file "$REPO/skills/herdr/SKILL.md"          "$HOME/.claude/skills/herdr/SKILL.md"
 
 install_file "$REPO/bin/sol-run" "$HOME/.local/bin/sol-run"
 if [ "$APPLY" = 1 ] && [ -f "$HOME/.local/bin/sol-run" ]; then chmod +x "$HOME/.local/bin/sol-run"; fi
