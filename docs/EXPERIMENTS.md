@@ -40,9 +40,28 @@ Per-bug: all six runs caught the same 9 of 10 — including two of the three har
 
 **Caveats.** n=3 per arm, one instrument, and a ceiling effect: 9/10 was universal, so a single bug carried all the discriminating power. A harder instrument (subtler tiers, larger diff) could still separate the efforts. The instrument is kept outside this repo; regenerate a fresh one for future benchmarks — a published instrument is eventually burned.
 
+## E6 — judgment-heavy comparative audit: high vs xhigh (2026-07-15)
+
+**Setup.** Tests the one role E1/E4 didn't: judgment, not generation or bug-recall. Instrument: four candidate `SlidingWindowRateLimiter` implementations of one spec — A correct+clean (intended best), B correct+over-engineered (taste #2), C a planted off-by-one (`len <= cap` admits one extra, D1), D a planted fixed-window spec-misread (2× boundary burst, D2). Sol generated it; the orchestrator behaviorally verified ground truth before any audit ran (A/B admit 3, C admits 4, D admits 6 in a boundary-burst harness — not just read the manifest). Audit task: diagnose defects, rank all four, recommend one. Three fresh-session runs per effort through the read-only lane, identical prompts, effort the only variable. Two metrics: objective (planted-defect catch + clean recommendation) and a **blind quality panel** — 3 fresh judges rank the 6 anonymized audits (arms shuffled, not grouped) on defect precision, justification honesty, decisiveness, and depth beyond the obvious.
+
+**Results.**
+
+| | high (n=3) | xhigh (n=3) |
+|---|---|---|
+| D1 + D2 caught | 3/3 both | 3/3 both |
+| ranking / recommendation | `a,b,c,d` / A — all 3 | `a,b,c,d` / A — all 3 |
+| **mean blind rank** (1=best…6=worst) | **3.33** | 3.67 |
+| best / worst single artifact | 1.67 / 5.00 | **1.33** / **6.00** |
+| top-3 finishes (of 9 slots) | 5 | 4 |
+| wall / output tokens | 105s / 5.0k | 122s (+16%) / 6.2k (+24%) |
+
+**Conclusion.** Refuted. Every objective metric tied at ceiling (all six caught both planted defects with correct line + operator + failure mode, all ranked identically). On blind quality the arms are a statistical wash (3.33 vs 3.67, n=3), and the *shape* is the finding: **xhigh produced both the single best artifact AND the unanimous worst** — higher variance, not higher level. The field's "best artifact of the day was the one xhigh run" (n=1) is exactly consistent with that variance, not evidence of a level shift. The real quality discriminator wasn't either planted defect (everyone caught those) but an *unseeded* subtlety — the deque pruning assumes non-decreasing timestamps, which the spec never guarantees; the top artifacts connected it to production reality, the worst waved at it — and catching-it-deeply did **not** track effort. So `high` is the default for judgment too; the way to buy judgment quality with surplus usage is **best-of-N + a blind panel** (which samples exactly the per-run variance xhigh exhibits), not preemptive effort. This completes the sweep: depth doesn't beat width in any of the three measured Sol roles (generation E1, review E4, judgment E6).
+
+**Caveats.** n=3/arm, one instrument, ceiling on every objective axis (so the panel carried all discrimination), and the judge panel is itself Sol-at-high — a judge with its own blind spots. A harder instrument (closer A-vs-B, subtler planted defects) could still separate the arms.
+
 ## Open experiment queue
 
 - E2: luna vs sol as implementer at high, full exec loop, Sol reviewing both.
 - E3: does the plan-review lane (Sol reviewing Fable's spec pre-implementation) measurably reduce fix rounds?
 - E5: does a dedicated concurrency-lens reviewer reliably catch suspension-point races (E4's H1 class) that generalist reviewers miss at every effort?
-- E6: xhigh for judgment-heavy comparative audits — field-observed best-artifact-of-the-day on a comparative editor audit (n=1, uncontrolled); run a controlled high-vs-xhigh comparison on a rank-N-alternatives task.
+- ~~E6~~ DONE (above): xhigh does not reliably beat high on judgment either — higher variance, tied mean. Width (best-of-N + panel) is the lever.
