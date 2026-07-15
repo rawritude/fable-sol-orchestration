@@ -45,3 +45,4 @@ Per-bug: all six runs caught the same 9 of 10 — including two of the three har
 - E2: luna vs sol as implementer at high, full exec loop, Sol reviewing both.
 - E3: does the plan-review lane (Sol reviewing Fable's spec pre-implementation) measurably reduce fix rounds?
 - E5: does a dedicated concurrency-lens reviewer reliably catch suspension-point races (E4's H1 class) that generalist reviewers miss at every effort?
+- E6: xhigh for judgment-heavy comparative audits — field-observed best-artifact-of-the-day on a comparative editor audit (n=1, uncontrolled); run a controlled high-vs-xhigh comparison on a rank-N-alternatives task.

@@ -49,6 +49,7 @@ codex exec -C <repo> \
   -c sandbox_workspace_write.network_access=false \
   -m gpt-5.6-sol \
   -c model_reasoning_effort="high" \
+  -c service_tier="fast" \
   --enable fast_mode \
   --json \
   -o "$RUN/result.md" - <"$RUN/prompt" >"$RUN/events.jsonl" 2>"$RUN/err"
@@ -58,7 +59,7 @@ SID="$(jq -r 'select(.type=="thread.started")|.thread_id' "$RUN/events.jsonl" | 
 **Prefer the installed wrapper** — `bin/sol-run` (→ `~/.local/bin/sol-run`) encodes this exact invocation: `sol-run [-C repo] [-s workspace-write|read-only] [-n] [-m model] [-e effort] < prompt`; resume with `sol-run -r <sid> -C repo < prompt`; old run dirs purge with `sol-run gc`. It prints `RUN= RESULT= EVENTS= ERR= SID= EXIT= AVAIL=` lines (`AVAIL=hard_unavailable` → take the fallback ladder below), keeps run dirs so results outlive backgrounded calls, and hard-rejects `danger-full-access`, dash-leading resume ids, and any repo that would contain the run-dir base. One command means one harness allowlist rule (`Bash(sol-run:*)`) instead of a human approval per compound block. The block above stays as the reference contract and the fallback where the wrapper isn't installed.
 
 - `--ignore-user-config` skips `$CODEX_HOME/config.toml`, so config-defined MCP servers, extra writable roots, and network defaults don't leak in. It does NOT cover a standalone `~/.codex/hooks.json` — that still loads, so keep no untrusted hooks there (none by default). Pin sandbox/model/effort explicitly on top.
-- Sandbox tiers: `workspace-write` for implementation (writes confined to repo + tmp, reads unrestricted), `read-only` for reviews/exploration. Enable network only per-task with `-c sandbox_workspace_write.network_access=true` (dep installs, or proofs that bind a port — next sentence); it grants direct unproxied egress, so keep it off by default and off for anything touching untrusted code. Network off blocks `socket()` wholesale (seccomp EPERM, verified 2026-07-14), not just egress — even loopback binds fail. Decide at dispatch: if the proof command spins up a local server (vitest/playwright server suites, BFF tests), the lot needs network on, else the proof hard-fails in-sandbox.
+- Sandbox tiers: `workspace-write` for implementation (writes confined to repo + tmp, reads unrestricted), `read-only` for reviews/exploration. Enable network only per-task with `-c sandbox_workspace_write.network_access=true` (dep installs, or proofs that bind a port — next sentence); it grants direct unproxied egress, so keep it off by default and off for anything touching untrusted code. Network off blocks `socket()` wholesale (seccomp EPERM, verified 2026-07-14), not just egress — even loopback binds fail. Decide at dispatch: if the proof command spins up a local server (vitest/playwright server suites, BFF tests), the lot needs network on, else the proof hard-fails in-sandbox. There is NO bind-without-egress knob in 0.144.4: `allow_local_binding` exists in the binary but belongs to the experimental network-proxy subsystem, and `sandbox_workspace_write.allow_local_binding=true` is verifiably ineffective (probed 2026-07-15) — port-binding proofs either get network-on (trusted repos only) or ship UNPROVEN with exact HOST-RUN commands (standing AGENTS.md rule). Re-check on codex upgrades.
 - Implementation-heavy lots: `gpt-5.6-luna` is the common flat-rate implementer pick in the wild (Sol reviews it); untested here — benchmark before making it the default.
 - Effort: allocate by ROLE, not one-size-fits-all — generation and review respond to effort differently (both measured, see EXPERIMENTS.md):
 
@@ -68,15 +69,17 @@ SID="$(jq -r 'select(.type=="thread.started")|.thread_id' "$RUN/events.jsonl" | 
 | bulk exploration / reading | `medium` | barely engages reasoning; save the usage window |
 | plan review (pre-build gate) | `high` (+ a second independent round on big specs) | leverage is real — buy it with width, not depth |
 | code review / verify panels | `high` | measured (E4): xhigh −0.33 mean recall, +73% output tokens, +39% wall; 0 false positives at both efforts |
+| judgment-heavy comparative audit (rank alternatives, editorial synthesis) | `xhigh` | field-observed best artifact of a 15-lot day (n=1, uncontrolled — E6 queued to measure) |
 | retry after a failed verify round | `xhigh` | escalation-on-evidence — the one place depth is bought, and only on demonstrated failure |
 
   Width beats depth everywhere measured: with usage to spare, spend it on best-of-N worktree attempts + a judge for novel/hard lots, extra verify-panel lenses (a dedicated concurrency lens covers the one bug class E4's reviewers missed at every effort), extra plan-review rounds, and loop-until-dry reviews — never on preemptive effort escalation.
-- `--enable fast_mode` is the Fast-tier *feature gate* (`-c features.fast_mode=true`), not a per-request tier selector; it does not itself change the service tier. Harmless to keep on.
+- `--enable fast_mode` is the Fast-tier *feature gate* (`-c features.fast_mode=true`), not a per-request tier selector; it does not itself change the service tier. Harmless to keep on. The tier itself is `-c service_tier="fast"` — pinned on the headless lanes (field-blessed across a 15-lot day; drop back to standard if the usage window ever becomes the binding constraint).
 - Read the `-o` file for the result. `-o` does NOT suppress the final message on stdout, so redirect stdout to a file (`>"$RUN/events.jsonl"` with `--json`) to keep it out of context.
 - Capture the session id from the `--json` `thread.started` event (above), never by scraping human-formatted stderr.
 - Long runs: Bash `run_in_background`, read `-o` file on exit; don't kill quiet runs <30 min. (the EXIT trap fires when the launching shell exits; for detached background runs, read the result before that shell returns, or clean `$RUN` explicitly after.)
 - Parallel independent tasks: each gets its own `$RUN` dir — never share paths.
 - Outside a git repo add `--skip-git-repo-check`.
+- Toolchain match: Sol's shell inherits the launching PATH. If the repo pins engines (mise / .nvmrc / package.json engines), launch through the repo's toolchain (`mise exec -C <repo> -- sol-run ...`, `nvm exec <ver> sol-run ...`) — a mismatched node emits engine warnings at best and phantom failures at worst.
 - **Trust boundary:** these tiers confine *writes*, not *reads* — a delegate reading an untrusted repo can read anything the invoking user can (`~/.ssh`, tokens) and codex auto-loads that repo's own `AGENTS.md` after the global one (closer wins). Only point Sol at repos you author or trust; for third-party code see SECURITY.md before delegating.
 
 ### When Sol is unavailable (usage exhausted / auth / down)
@@ -172,6 +175,9 @@ git -C <repo> worktree add "$FLEET/lot2" -b fleet/lot2
 - Cleanup after merge: `git worktree remove "$FLEET/lotN"` (`--force` for an abandoned dirty lot), then delete the `fleet/*` branches. Worktrees live outside the repo, so no `.gitignore` churn.
 - Collision detection is ORCHESTRATOR duty, not the lots': lots run isolated by design and cannot see sibling branches. At triage, check every proposed lot's file set against ALL in-flight lot/PR branches — not just the current batch's picks. Two lots authoring "the same" file, even byte-identical, is a merge conflict in disguise. When a running lot reports it needs a seam that exists only on a sibling branch (pre-done checklist item h), stack it — re-dispatch on the sibling's branch; never let it recreate the file.
 - Merge-time main re-sync is also orchestrator duty: lots run network-off and can only see the `origin/main` frozen at worktree creation (checklist item g makes them declare which subsystems the check must cover); before each merge, fetch live main and re-check composition for exactly those subsystems.
+- Light variant — shared checkout instead of worktrees: parallel workspace-write lots in ONE checkout held up in the field (3 simultaneous lots, zero clobbers) when every prompt carries HARD file-ownership boundaries. Enforcement is prompt-level only, so worktrees stay the default; use the light variant for small trusted batches where merge ceremony outweighs the risk.
+- Gate files are seams, not lot property: files no lot may touch (kill-rule allowlists, grep gates, dependency/browser pins) get an orchestrator-owned reconciliation pass after lots land. Budget it — it's the design, not a defect.
+- Serialize browser-driven proof batteries (Playwright and kin): never run them concurrently with full unit suites — load contention produces false timeouts (two false 240s failures in one field day).
 - Sol-side fan-out covers read-heavy parallelism **inside one lot**; the fleet lane is its write-side complement **across lots**.
 
 ## Follow-ups (resume — cheaper than fresh runs, keeps Sol's context)
@@ -180,10 +186,12 @@ Use the `$SID` captured from the first run's `thread.started` event (above); wit
 
 ```bash
 (cd <repo> && codex exec resume "$SID" --ignore-user-config \
+  -c sandbox_mode="workspace-write" -c sandbox_workspace_write.network_access=false \
+  -m gpt-5.6-sol -c model_reasoning_effort="high" -c service_tier="fast" \
   --json -o "$RUN2/result.md" - <"$RUN2/prompt" >"$RUN2/events.jsonl" 2>"$RUN2/err")
 ```
 
-`resume` has no `-C`: run from the repo dir. It inherits the original run's sandbox (verified). Outside a git repo it needs `--skip-git-repo-check`. If resume exits nonzero (session gc'd / `CODEX_HOME` changed / state cleaned): do NOT `--last` — start a fresh pinned session re-supplying the frozen spec, current diff, and prior findings.
+`resume` has no `-C` (run from the repo dir) and NO `--sandbox` flag — and it does NOT inherit the original run's sandbox: verified 2026-07-15, a workspace-write session resumed read-only ("writing is blocked by read-only sandbox"; also hit twice in the field). Re-pin sandbox/model/effort/tier via `-c` overrides on every resume — `sol-run -r` does this automatically. Outside a git repo it needs `--skip-git-repo-check`. If resume exits nonzero (session gc'd / `CODEX_HOME` changed / state cleaned): do NOT `--last` — start a fresh pinned session re-supplying the frozen spec, current diff, and prior findings.
 
 ## Prompt contract
 

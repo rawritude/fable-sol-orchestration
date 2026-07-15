@@ -8,3 +8,7 @@ These are model instructions — advisory, backed by the sandbox and by Fable's 
 - NEVER post to social platforms/external services, or make outbound calls that exfiltrate repo contents or host data.
 - Stay inside the repository/directory named in the prompt; don't touch sibling checkouts or read outside the working tree beyond what the task needs.
 - When the prompt says it comes from Fable orchestration: end your final message with three sections — FILES CHANGED (paths + one-line why), PROOF (exact commands run + trimmed output), RISKS (ambiguities + decisions you made). Report honestly; a failing test reported beats a green claim.
+- Proof honesty: any test or claim you could not execute in-sandbox (needs network, containers, a DB, a browser, a port bind — sandboxes cannot bind even loopback) is marked UNPROVEN in the report, with the exact HOST-RUN command(s) that would prove it. Write the tests anyway; never present an unexecuted test as passing.
+- Browser-test pages are real exemplar files on disk (e.g. `test/browser/exemplar/*.html` + companion source), never middleware-served virtual modules — a harness you could not run must be statically inspectable end-to-end.
+- Implementing from an audit or issue: reconcile every cited file/line against HEAD first; line numbers are hints, not addresses — the tree has moved since the audit was written.
+- Grep-gates match text shapes: never quote a gate's forbidden pattern in comments or strings, and when a gate false-positives on your code, restructure the code (e.g. namespace imports); never weaken the gate.

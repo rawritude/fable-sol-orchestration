@@ -9,7 +9,7 @@
 #
 # Usage:
 #   sol-run [-C repo] [-s workspace-write|read-only] [-n] [-m model] [-e effort] < prompt
-#   sol-run -r <session-id> -C repo < prompt     # resume (inherits original sandbox)
+#   sol-run -r <session-id> -C repo [-s tier] < prompt   # resume (sandbox re-pinned; resume does NOT inherit it)
 #   sol-run gc                                   # purge run dirs older than 7 days
 #
 # Prompt on stdin. Prints KEY=VALUE lines on stdout:
@@ -83,13 +83,19 @@ cat > "$RUN/prompt"
 
 set +e
 if [ -n "$RESUME" ]; then
-  # resume has no -C and inherits the original run's sandbox/model/effort — pin only the surface flags
-  ARGS=(--ignore-user-config --json -o "$RUN/result.md")
+  # resume does NOT inherit the sandbox (verified 2026-07-15: a workspace-write session
+  # resumed read-only; `codex exec resume` has no --sandbox flag) — re-pin everything
+  # via config overrides on every resume, exactly like a fresh run.
+  ARGS=(--ignore-user-config -c "sandbox_mode=\"$SANDBOX\"" -m "$MODEL" -c "model_reasoning_effort=\"$EFFORT\"" -c "service_tier=\"fast\"" --enable fast_mode --json -o "$RUN/result.md")
+  if [ "$SANDBOX" = "workspace-write" ]; then
+    if [ "$NETWORK" -eq 1 ]; then NET=true; else NET=false; fi
+    ARGS+=(-c "sandbox_workspace_write.network_access=$NET")
+  fi
   git -C "$REPO" rev-parse --is-inside-work-tree >/dev/null 2>&1 || ARGS+=(--skip-git-repo-check)
   (cd "$REPO" && codex exec resume "$RESUME" "${ARGS[@]}" - < "$RUN/prompt" > "$RUN/events.jsonl" 2> "$RUN/err")
   CODE=$?
 else
-  ARGS=(--ignore-user-config --sandbox "$SANDBOX" -m "$MODEL" -c "model_reasoning_effort=\"$EFFORT\"" --enable fast_mode --json -o "$RUN/result.md")
+  ARGS=(--ignore-user-config --sandbox "$SANDBOX" -m "$MODEL" -c "model_reasoning_effort=\"$EFFORT\"" -c "service_tier=\"fast\"" --enable fast_mode --json -o "$RUN/result.md")
   if [ "$SANDBOX" = "workspace-write" ]; then
     if [ "$NETWORK" -eq 1 ]; then NET=true; else NET=false; fi
     ARGS+=(-c "sandbox_workspace_write.network_access=$NET")
