@@ -60,7 +60,17 @@ SID="$(jq -r 'select(.type=="thread.started")|.thread_id' "$RUN/events.jsonl" | 
 - `--ignore-user-config` skips `$CODEX_HOME/config.toml`, so config-defined MCP servers, extra writable roots, and network defaults don't leak in. It does NOT cover a standalone `~/.codex/hooks.json` — that still loads, so keep no untrusted hooks there (none by default). Pin sandbox/model/effort explicitly on top.
 - Sandbox tiers: `workspace-write` for implementation (writes confined to repo + tmp, reads unrestricted), `read-only` for reviews/exploration. Enable network only per-task with `-c sandbox_workspace_write.network_access=true` (dep installs, or proofs that bind a port — next sentence); it grants direct unproxied egress, so keep it off by default and off for anything touching untrusted code. Network off blocks `socket()` wholesale (seccomp EPERM, verified 2026-07-14), not just egress — even loopback binds fail. Decide at dispatch: if the proof command spins up a local server (vitest/playwright server suites, BFF tests), the lot needs network on, else the proof hard-fails in-sandbox.
 - Implementation-heavy lots: `gpt-5.6-luna` is the common flat-rate implementer pick in the wild (Sol reviews it); untested here — benchmark before making it the default.
-- Effort: `high` is the default. Measured 2026-07-14 (tricky async-cache spec, generation mode): xhigh cost +73% wall / +55% tokens for zero quality gain — both swept an adversarial judge suite with the same architecture. Escalate to `xhigh` only after a `high` run fails a verify round on a correctness-heavy task; never preemptively.
+- Effort: allocate by ROLE, not one-size-fits-all — generation and review respond to effort differently (both measured, see EXPERIMENTS.md):
+
+| Sol role | pin | why |
+|---|---|---|
+| implementation / generation | `high` | measured (E1): xhigh +73% wall / +55% tokens, zero quality gain |
+| bulk exploration / reading | `medium` | barely engages reasoning; save the usage window |
+| plan review (pre-build gate) | `high` (+ a second independent round on big specs) | leverage is real — buy it with width, not depth |
+| code review / verify panels | `high` | measured (E4): xhigh −0.33 mean recall, +73% output tokens, +39% wall; 0 false positives at both efforts |
+| retry after a failed verify round | `xhigh` | escalation-on-evidence — the one place depth is bought, and only on demonstrated failure |
+
+  Width beats depth everywhere measured: with usage to spare, spend it on best-of-N worktree attempts + a judge for novel/hard lots, extra verify-panel lenses (a dedicated concurrency lens covers the one bug class E4's reviewers missed at every effort), extra plan-review rounds, and loop-until-dry reviews — never on preemptive effort escalation.
 - `--enable fast_mode` is the Fast-tier *feature gate* (`-c features.fast_mode=true`), not a per-request tier selector; it does not itself change the service tier. Harmless to keep on.
 - Read the `-o` file for the result. `-o` does NOT suppress the final message on stdout, so redirect stdout to a file (`>"$RUN/events.jsonl"` with `--json`) to keep it out of context.
 - Capture the session id from the `--json` `thread.started` event (above), never by scraping human-formatted stderr.
