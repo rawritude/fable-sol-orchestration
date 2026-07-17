@@ -180,6 +180,7 @@ git -C <repo> worktree add "$FLEET/lot2" -b fleet/lot2
 - Gate files are seams, not lot property: files no lot may touch (kill-rule allowlists, grep gates, dependency/browser pins) get an orchestrator-owned reconciliation pass after lots land. Budget it — it's the design, not a defect.
 - Serialize browser-driven proof batteries (Playwright and kin): never run them concurrently with full unit suites — load contention produces false timeouts (two false 240s failures in one field day).
 - Sol-side fan-out covers read-heavy parallelism **inside one lot**; the fleet lane is its write-side complement **across lots**.
+- Inside Herdr (`HERDR_ENV=1`, user watching): run the fleet visibly — `herdr worktree create` owns the worktree+pane per lot (one pane = the visible fleet grid), and `herdr wait output --match "^CHECKPOINT:" --regex` gives mid-flight steering. See `$herdr` "Orchestration integration". Lane rules (file-disjoint, Fable-owned sequential merge) unchanged; only the transport differs.
 
 ## Fan-out playbook — spend surplus usage on width and depth, deliberately
 

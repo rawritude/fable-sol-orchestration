@@ -184,6 +184,43 @@ Use `--format ansi` when colors and terminal styling are evidence. Otherwise use
 
 If the user explicitly asks for another tab, workspace, or worktree, discover that command group and use returned IDs. Do not infer a larger topology from a request to start an agent or command.
 
+## Orchestration integration (Fable ↔ Sol fleet — visible mode)
+
+Herdr as the visible transport for `$codex-first` fleet/funnel orchestration, not just a single sibling pane. These four capabilities map onto the orchestration lanes; the command *syntax* below is from the binary's own help, but **the JSON output shapes and runtime behavior are unverified from outside Herdr — confirm on first live use (read IDs/paths from the actual `--json` response; never construct them).** All require `HERDR_ENV=1`.
+
+**1. Worktree-native fleet.** The fleet lane's worktree-per-lot topology is native to Herdr — let it own the checkout *and* the pane instead of hand-rolling `git worktree add` + `sol-run -C`:
+
+```bash
+herdr worktree create --branch fleet/lot1 --base origin/main --label lot1 --no-focus --json
+# read the created worktree path AND pane id from the JSON response, then run the lot in that pane:
+herdr pane run <returned-pane-id> "sol-run -C <returned-worktree-path> -s workspace-write -e high < <lotspec>"
+herdr worktree remove --workspace <id> --force --json   # after merge (Fable owns the merge, per fleet lane)
+```
+
+One pane per lot = the visible fleet grid a terminal multiplexer is built to show. File-disjointness and Fable-owned sequential merge are unchanged (fleet lane rules still apply); Herdr only owns the worktree+pane lifecycle.
+
+**2. Checkpoint steering (the funnel's Stage 2, made native).** `wait output --match` blocks on text appearing in a pane — the primitive continuous steering needs. Have each lot print a checkpoint marker at decision points ("`CHECKPOINT: chose approach X`"), then watch and steer mid-flight before a wrong approach burns the whole run:
+
+```bash
+herdr wait output <lot-pane-id> --match "^CHECKPOINT:" --regex --source recent-unwrapped --timeout 600000
+herdr pane read <lot-pane-id> --source recent-unwrapped --lines 40   # inspect the checkpoint
+# divergence from spec/failure-catalog → steer via the same pane (codex resume semantics):
+herdr pane run <lot-pane-id> "<correction>"
+```
+
+This catches the "logically correct, wrong harness" class at the checkpoint instead of at final review. The failure catalog to match against is the pre-done checklist + field feedback.
+
+**3. Proactive notification for stepped-away runs.** Fleet runs are long and the owner may be on mobile. Ping when a lot needs steering or a panel is ready — don't silently finish:
+
+```bash
+herdr notification show "lot3 blocked — needs steering" --body "approach diverged from spec" --sound request
+herdr notification show "fleet ready for review" --sound done
+```
+
+**4. Remote fleet.** `herdr --remote <ssh-target> [--session <name>]` drives a Herdr server on another box — run a Sol fleet on a beefier remote host and steer it from the laptop. Scale lever; same lane rules apply on the remote.
+
+Precedence: these compose with — do not replace — the fleet lane, verify panel, and funnel doctrine in `$codex-first`. Herdr changes the *transport and visibility*, never the review gate, the file-ownership partitioning, or Fable-owns-merge.
+
 ## Safety and coordination rules
 
 - Use `--no-focus` for background work unless the user asked to switch context.
