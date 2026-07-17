@@ -59,6 +59,29 @@ Per-bug: all six runs caught the same 9 of 10 — including two of the three har
 
 **Caveats.** n=3/arm, one instrument, ceiling on every objective axis (so the panel carried all discrimination), and the judge panel is itself Sol-at-high — a judge with its own blind spots. A harder instrument (closer A-vs-B, subtler planted defects) could still separate the arms.
 
+## E7 — ultra effort: does auto-delegation + tool-loop beat high? (2026-07-17)
+
+**What ultra is.** `gpt-5.6-sol` has a 6th effort level above `max`: `ultra` — catalog description "Maximum reasoning with automatic task delegation." The model spawns and coordinates its own sub-agents (`multi_agent`, stable/default-on) and drives its tool loop harder. Distinct from xhigh (E6): not just more thinking, but self-delegation + empirical exercise of the artifact.
+
+**Setup.** Same E6 instrument (4 rate-limiter candidates, 2 verified planted defects), same audit prompt. 3 fresh `ultra` runs, blind-paneled (3 fresh judges, arms shuffled) against the 3 E6 `high` artifacts.
+
+**Results.**
+
+| | high (E6) | ultra |
+|---|---|---|
+| D1+D2 caught / ranking | 3/3, all `a,b,c,d`/A | 3/3, all `a,b,c,d`/A |
+| **mean blind rank** (1=best…6=worst) | 3.78 | **3.22** |
+| best / worst single artifact | 2.00 / 6.00 | **1.00** / 5.00 |
+| sub-agent spawns per run | 0 | 0–4 |
+| command executions per run | 0 (reasoned about code) | **12–14 (exercised code)** |
+| wall / output tokens | 105s / 5.0k | 240–338s (~2.7×) / 6.7–12.6k (~2×) |
+
+**Conclusion.** Ultra earns a real but bounded role. Its mean edge over high is modest and within n=3 noise (3.22 vs 3.78), and its variance is just as high — it produced the unanimous #1 AND a middling #5. But the *mechanism* is a genuine difference E6's efforts don't have: ultra runs its tool loop to **empirically exercise the code** (12–14 command executions every run — threaded concurrency probes, float-precision checks, boundary tests) instead of reasoning about it. The panel-winning ultra artifact caught real defects (float-cutoff collapse `1e20 - 1.0 == 1e20`, concurrency-induced timestamp reordering) that **no high or xhigh run in E6 found** — the judge cited exactly that depth. This is D6 (evidence over claims) executed by Sol itself.
+
+So: ultra is an **accuracy lever for ship-gate-critical / hard-correctness lots**, best used *inside best-of-N* (its variance means a single ultra run isn't reliable dominance; the batch-best is what wins). It is NOT faster — 2–3× wall on a bounded prompt, up to 5× on an open-ended one — so it does nothing for throughput. Cost 2–3× tokens. Not a blanket default; a targeted spend when correctness matters more than latency and usage is abundant.
+
+**Caveats.** n=3, one instrument, ceiling on objective metrics (panel carried discrimination), self-judged by Sol-at-high. Ultra's empirical-verification edge should show larger on tasks where claims are checkable by execution (this one was); it may add less on pure design/taste work.
+
 ## Open experiment queue
 
 - E2: luna vs sol as implementer at high, full exec loop, Sol reviewing both.

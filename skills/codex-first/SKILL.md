@@ -70,6 +70,7 @@ SID="$(jq -r 'select(.type=="thread.started")|.thread_id' "$RUN/events.jsonl" | 
 | plan review (pre-build gate) | `high` (+ a second independent round on big specs) | leverage is real — buy it with width, not depth |
 | code review / verify panels | `high` | measured (E4): xhigh −0.33 mean recall, +73% output tokens, +39% wall; 0 false positives at both efforts |
 | judgment-heavy comparative audit (rank alternatives, editorial synthesis) | `high` + best-of-N | measured (E6): xhigh tied high on mean quality with HIGHER variance (produced both best AND unanimous-worst artifact); sample the variance with a blind panel, don't pay for depth |
+| ship-gate-critical / hard-correctness lot where claims are execution-checkable | `ultra` inside best-of-N | measured (E7): ultra self-delegates + EXERCISES the code (12–14 cmd execs/run), catching execution-checkable defects high/xhigh miss; modest mean edge, still high-variance → run in best-of-N, panel-pick. 2–3× tokens, SLOWER — accuracy not speed |
 | retry after a failed verify round | `xhigh` | escalation-on-evidence — the one place depth is bought, and only on demonstrated failure |
 
   Width beats depth in ALL THREE measured Sol roles — generation (E1), review (E4), judgment (E6): xhigh never raised the mean, and on judgment it only raised the variance. With usage to spare, spend it on best-of-N worktree attempts + a blind judge panel (novel/hard lots AND judgment-heavy audits — the panel samples exactly the per-run variance xhigh exhibits), extra verify-panel lenses (a dedicated concurrency lens covers the one bug class E4's reviewers missed at every effort), extra plan-review rounds, and loop-until-dry reviews — never on preemptive effort escalation.
@@ -179,6 +180,18 @@ git -C <repo> worktree add "$FLEET/lot2" -b fleet/lot2
 - Gate files are seams, not lot property: files no lot may touch (kill-rule allowlists, grep gates, dependency/browser pins) get an orchestrator-owned reconciliation pass after lots land. Budget it — it's the design, not a defect.
 - Serialize browser-driven proof batteries (Playwright and kin): never run them concurrently with full unit suites — load contention produces false timeouts (two false 240s failures in one field day).
 - Sol-side fan-out covers read-heavy parallelism **inside one lot**; the fleet lane is its write-side complement **across lots**.
+
+## Fan-out playbook — spend surplus usage on width and depth, deliberately
+
+Flat-rate usage with headroom means the binding constraint is rarely "can Sol do it" — it's how well Fable decomposes and coordinates. Three ORTHOGONAL fan-out axes; pick by what you're short on. Do not conflate them — only the first buys speed.
+
+1. **Slice width → SPEED.** Decompose the job into more, smaller, file-disjoint lots and run them concurrently (fleet lane). Whole-job wall-clock drops because slices overlap. This is the most underused axis: default to slicing a multi-part task into parallel lots rather than one serial lot. Cap = Fable's review bandwidth (D6/D12), not Sol's throughput — with surplus usage, push lot count until review is the bottleneck, then stop. Prefer smaller lots: they review faster, merge cleaner, and fail smaller.
+2. **Redundancy width → ACCURACY via variance capture.** For hard/judgment/ship-gate lots, run N independent attempts (angle-varied prompts, own worktrees) and blind-panel-pick the best — best-of-N. Measured rationale (E6/E7): every effort level is HIGH-VARIANCE, so the batch-best reliably beats any single run's expectation, and this beats paying for higher effort (which doesn't lift the mean). Standing default when usage is abundant and the lot is correctness- or judgment-critical; N=3 is the workhorse.
+3. **Depth → ACCURACY via empirical self-verification.** `ultra` effort (E7): Sol auto-delegates sub-agents and exercises the code through its tool loop, catching execution-checkable defects reasoning-only runs miss. Use for ship-gate-critical / hard-correctness lots — ideally as one arm inside a best-of-N (its variance is high; the panel harvests its ceiling). NOT a throughput lever: 2–3× slower.
+
+**Coordination for a big job** (assemble the axes): decompose into disjoint lots → implement in parallel (axis 1) → orchestrator integration-reconcile pass over the gate-file seams (fleet lane rule) → verify the integrated diff with a best-of-N panel including an ultra arm (axes 2+3). Fable stays the coordinator: slicing, collision-checking across all in-flight branches, merging, and the final review gate are never delegated.
+
+**What fan-out does NOT fix:** a vague spec (more agents = more divergent wrong answers), or Fable's review bandwidth (every merged diff still gets read — that's the real ceiling on width). Fan out the work, not the ambiguity.
 
 ## Follow-ups (resume — cheaper than fresh runs, keeps Sol's context)
 
