@@ -191,7 +191,12 @@ Flat-rate usage with headroom means the binding constraint is rarely "can Sol do
 
 **Coordination for a big job** (assemble the axes): decompose into disjoint lots → implement in parallel (axis 1) → orchestrator integration-reconcile pass over the gate-file seams (fleet lane rule) → verify the integrated diff with a best-of-N panel including an ultra arm (axes 2+3). Fable stays the coordinator: slicing, collision-checking across all in-flight branches, merging, and the final review gate are never delegated.
 
-**What fan-out does NOT fix:** a vague spec (more agents = more divergent wrong answers), or Fable's review bandwidth (every merged diff still gets read — that's the real ceiling on width). Fan out the work, not the ambiguity.
+**Oracle-gated funnel (piloted 2026-07-17, docs/PILOT-funnel.md).** For a multi-lot job, freeze an acceptance oracle (test/property suite) per module in Stage 0 and gate lots on it automatically before review. Piloted lessons, learned the hard way:
+- The oracle is an ADDITIONAL execution lens, NOT a replacement for reasoning review. Measured: an oracle caught a float-precision boundary defect that `high` review missed, while `high` review caught two semantic defects (ordering assumption, subnormal discrepancy) the oracle never tested. Complementary — layer them; escaped-defect reduction comes from the UNION of lenses.
+- A Sol-authored oracle OVER-REACHES: 20 of 21 failures in the pilot were invented requirements (unmandated validation, pedantic reading of an ambiguous spec word). Stage-0 oracle-vetting by Fable is mandatory; oracle-red is a signal to adjudicate, not an auto-bounce. Every false positive traced to spec ambiguity — a loose spec diverges the *oracle* as surely as the implementations.
+- Execution-checkable defects (float precision, boundary collapse, overflow) are found by the oracle or an `ultra` arm; reasoning review at any effort tends to miss them (E6/E7 + pilot agree). Semantic defects are the reverse. Run both lenses.
+
+**What fan-out does NOT fix:** a vague spec (more agents = more divergent wrong answers — AND more divergent oracles), or Fable's review bandwidth (every merged diff still gets read — that's the real ceiling on width). Fan out the work, not the ambiguity.
 
 ## Follow-ups (resume — cheaper than fresh runs, keeps Sol's context)
 
