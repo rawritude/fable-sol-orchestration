@@ -214,12 +214,7 @@ herdr pane run <lot-pane-id> "<correction>"
 
 This catches the "logically correct, wrong harness" class at the checkpoint instead of at final review. The failure catalog to match against is the pre-done checklist + field feedback.
 
-**3. Proactive notification for stepped-away runs.** Fleet runs are long and the owner may be on mobile. Ping when a lot needs steering or a panel is ready — don't silently finish. **Verified caveat: notifications are DISABLED in this box's Herdr config** (`show` returns `{"reason":"disabled","shown":false}`) — enable them in `config.toml` (`herdr server reload-config` after) before relying on this:
-
-```bash
-herdr notification show "lot3 blocked — needs steering" --body "approach diverged from spec" --sound request
-herdr notification show "fleet ready for review" --sound done
-```
+**3. Proactive notification for stepped-away runs — do NOT use herdr's for this over SSH.** `herdr notification show` fires a GUI toast on the box running the Herdr server; over SSH that's the remote host the owner isn't looking at, so it never reaches them (and it's disabled in config here anyway: `{"reason":"disabled","shown":false}`). For a stepped-away signal, the ORCHESTRATOR pings its own channel — Claude Code mobile push (`agentPushNotifEnabled`) or a Discord message — which reaches the owner regardless of SSH. Herdr's `notification show` is only useful when the owner is physically at the box running the server; treat it as a same-machine convenience, not the fleet's away-signal.
 
 **4. Remote fleet (untested — no target available 2026-07-17).** `herdr --remote <ssh-target> [--session <name>]` drives a Herdr server on another box — run a Sol fleet on a beefier remote host and steer it from the laptop. Scale lever; same lane rules apply on the remote.
 
